@@ -17,6 +17,7 @@ struct ToolsView: View {
                     NavigationLink { DNSToolView() } label: { Label("DNS diagnostics", systemImage:"point.3.connected.trianglepath.dotted") }
                     NavigationLink { HealthToolView() } label: { Label("Endpoint health session", systemImage:"waveform.path.ecg") }
                     NavigationLink { CustomProbeView() } label: { Label("Bounded custom TCP probe",systemImage:"terminal") }
+                    NavigationLink { WebSocketToolView() } label: { Label("WebSocket handshake test", systemImage:"arrow.triangle.swap") }
                     NavigationLink { OpenAPIView() } label: { Label("OpenAPI endpoint explorer", systemImage:"curlybraces") }
                 }
                 Section { Text("Tools send real network requests. Use only authorized targets. Redirects are never automatically followed. Sessions stop when you leave the tool; scans are foreground-only.").font(.caption).foregroundStyle(.secondary) }
@@ -74,6 +75,7 @@ struct HTTPToolView: View {
     @State private var authorized = false
     @State private var confirm = false
     @State private var observation: HTTPObservation?
+    @State private var previousObservation: HTTPObservation?
     @State private var error: String?
     @State private var task: Task<Void,Never>?
     @State private var busy = false
@@ -81,6 +83,7 @@ struct HTTPToolView: View {
     @State private var expectedStatus = ""
     @State private var expectedText = ""
     @State private var export: URL?
+    @State private var formattedJSON = ""
     var body: some View {
         List {
             Section("Explicit request · no automatic redirects") {
@@ -134,6 +137,27 @@ struct HTTPToolView: View {
                     ForEach(value.certificates) { certificate in NavigationLink { CertificateView(certificate:certificate) } label: { VStack(alignment:.leading) { Text(certificate.subject); Text(certificate.trustStatus).font(.caption).foregroundStyle(.secondary) } } }
                     if value.certificates.isEmpty { Text("No certificate captured. Use HTTPS; trust data may not be available for every failed connection.").font(.caption) }
                 }
+                if let previous = previousObservation {
+                    Section("Response comparison (vs previous request)") {
+                        LabeledContent("Status transition", value: "\(previous.status) → \(value.status)")
+                        LabeledContent("Body SHA-256 match", value: previous.bodySHA256 == value.bodySHA256 ? "Identical" : "Changed")
+                        let addedHeaders = Set(value.headers.keys).subtracting(Set(previous.headers.keys))
+                        let removedHeaders = Set(previous.headers.keys).subtracting(Set(value.headers.keys))
+                        if !addedHeaders.isEmpty {
+                            Text("New headers: \(addedHeaders.sorted().joined(separator:", "))").font(.caption)
+                        }
+                        if !removedHeaders.isEmpty {
+                            Text("Removed headers: \(removedHeaders.sorted().joined(separator:", "))").font(.caption)
+                        }
+                    }
+                }
+                if !formattedJSON.isEmpty {
+                    Section("Structured JSON response explorer") {
+                        ScrollView {
+                            Text(formattedJSON).font(.caption.monospaced()).textSelection(.enabled)
+                        }.frame(maxHeight: 200)
+                    }
+                }
                 Section("Safe text preview · no scripts executed") { Text(value.bodyPreview).font(.caption.monospaced()).textSelection(.enabled) }
                 Section("Save intentionally") {
                     Button(saved ? "Observation saved" : "Save minimal HTTP/TLS history") { audit.addObservation(value); saved = true }.disabled(saved)
@@ -179,7 +203,19 @@ struct HTTPToolView: View {
         let requestMethod = method
         task = Task {
             defer { busy = false }
-            do { observation = try await HTTPInspector().inspect(url:url,method:requestMethod,headers:headers,body:body) }
+            do {
+                if let current = observation { previousObservation = current }
+                let obs = try await HTTPInspector().inspect(url:url,method:requestMethod,headers:headers,body:body)
+                observation = obs
+                if let jsonData = obs.bodyPreview.data(using: .utf8),
+                   let jsonObject = try? JSONSerialization.jsonObject(with: jsonData),
+                   let prettyData = try? JSONSerialization.data(withJSONObject: jsonObject, options: [.prettyPrinted, .sortedKeys]),
+                   let prettyString = String(data: prettyData, encoding: .utf8) {
+                    formattedJSON = prettyString
+                } else {
+                    formattedJSON = ""
+                }
+            }
             catch { self.error = error.localizedDescription }
         }
     }
@@ -188,16 +224,44 @@ struct CertificateView: View {
     let certificate: CertificateObservation
     @State private var file: URL?
     @State private var message = ""
+    @State private var baselineSPKI = ""
+    @State private var spkiMatchResult = ""
     var body: some View {
         List {
             Section("Observed certificate") {
                 Text(certificate.subject).font(.headline)
+                LabeledContent("Issuer", value: certificate.issuer)
                 Text(certificate.trustStatus)
-                Text("SHA-256: \(certificate.sha256)").font(.caption.monospaced()).textSelection(.enabled)
+                Text("Certificate SHA-256: \(certificate.sha256)").font(.caption.monospaced()).textSelection(.enabled)
+                if let spki = certificate.spkiSHA256 {
+                    Text("Public-key SPKI SHA-256: \(spki)").font(.caption.monospaced()).textSelection(.enabled)
+                }
                 LabeledContent("Key type",value:certificate.publicKeyType)
                 LabeledContent("Key size",value:"\(certificate.publicKeyBits) bits")
                 if let date = certificate.notBefore { LabeledContent("Not before",value:date.formatted()) }
                 if let date = certificate.notAfter { LabeledContent("Not after",value:date.formatted()); Text(date < Date() ? "Certificate is expired." : "Certificate expiry: \(date.formatted(date:.abbreviated,time:.omitted))") }
+            }
+            if !certificate.san.isEmpty {
+                Section("Subject alternative names (SAN)") {
+                    ForEach(certificate.san, id: \.self) { san in
+                        Text(san).font(.caption.monospaced()).textSelection(.enabled)
+                    }
+                }
+            }
+            Section("Public-key fingerprint comparison") {
+                TextField("Paste expected SPKI SHA-256 hex", text: $baselineSPKI).textInputAutocapitalization(.never).autocorrectionDisabled()
+                Button("Compare with observed public key") {
+                    let cleaned = baselineSPKI.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                    if let spki = certificate.spkiSHA256?.lowercased() {
+                        spkiMatchResult = (cleaned == spki) ? "Match: Public-key fingerprint matches baseline." : "Mismatch: Observed key differs from expected baseline."
+                    } else {
+                        spkiMatchResult = "No public key available for comparison."
+                    }
+                }.disabled(baselineSPKI.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                if !spkiMatchResult.isEmpty {
+                    Text(spkiMatchResult).font(.caption).foregroundStyle(spkiMatchResult.hasPrefix("Match") ? .mint : .orange)
+                }
+                Text("Public-key (SPKI) pinning compares key material directly; certificates can be renewed with the same key.").font(.caption)
             }
             Section {
                 Button("Export public certificate (DER)") {
@@ -231,6 +295,7 @@ struct BannerToolView: View {
     @State private var port = "22"
     @State private var authorized = false
     @State private var response = ""
+    @State private var previousBanner: String?
     @State private var busy = false
     @State private var task: Task<Void,Never>?
     var body: some View {
@@ -243,11 +308,21 @@ struct BannerToolView: View {
                 if busy { Button("Cancel") { task?.cancel() } }
                 Text("Sends no application payload. SSH, FTP and SMTP often send greetings; many other protocols remain silent. Only the first received chunk is shown, so banners can be incomplete.").font(.caption)
             }
-            Section("Untrusted text · not executed") { Text(response).font(.caption.monospaced()).textSelection(.enabled) }
+            if let previous = previousBanner, !previous.isEmpty, previous != response, !response.isEmpty, !response.hasPrefix("Connecting…") {
+                Section("Banner change highlighted") {
+                    Text("Previous greeting:").font(.caption.bold())
+                    Text(previous).font(.caption.monospaced()).foregroundStyle(.secondary)
+                    Text("Current greeting:").font(.caption.bold())
+                    Text(response).font(.caption.monospaced()).foregroundStyle(.mint)
+                    Text("A change in greeting banner may indicate a software update, reboot, or configuration change.").font(.caption)
+                }
+            }
+            Section("Untrusted text · not executed") { Text(response.isEmpty ? "No greeting observed yet" : response).font(.caption.monospaced()).textSelection(.enabled) }
         }.navigationTitle("Service greeting").onDisappear { task?.cancel() }.onChange(of:phase) { _, value in if value == .background { task?.cancel() } }
     }
     private func read() {
         guard ScopeParser.validHost(host), let number = UInt16(port), number > 0 else { response = "Invalid host or port"; return }
+        if !response.isEmpty && !response.hasPrefix("Connecting…") { previousBanner = response }
         busy = true; response = "Connecting…"
         task = Task {
             defer { busy = false }
@@ -262,7 +337,7 @@ struct DNSToolView: View {
     @State private var resolver = ""
     @State private var secondResolver = ""
     @State private var type: UInt16 = 1
-    @State private var tcp = false
+    @State private var transport = "UDP"
     @State private var authorized = false
     @State private var responses: [DNSResponse] = []
     @State private var error = ""
@@ -272,14 +347,18 @@ struct DNSToolView: View {
         List {
             Section("Explicit resolver queries") {
                 TextField("DNS name (PTR: enter reverse name)",text:$name).textInputAutocapitalization(.never).autocorrectionDisabled()
-                TextField("Resolver IP / hostname",text:$resolver).textInputAutocapitalization(.never).autocorrectionDisabled()
-                TextField("Optional comparison resolver",text:$secondResolver).textInputAutocapitalization(.never).autocorrectionDisabled()
+                TextField(transport == "DoH" ? "DoH URL: https://cloudflare-dns.com/dns-query" : "Resolver IP / hostname",text:$resolver).textInputAutocapitalization(.never).autocorrectionDisabled()
+                TextField(transport == "DoH" ? "Optional second DoH URL" : "Optional comparison resolver",text:$secondResolver).textInputAutocapitalization(.never).autocorrectionDisabled()
                 Picker("Record",selection:$type) { ForEach(DNSCodec.types,id:\.1) { Text($0.0).tag($0.1) } }
-                Toggle("DNS over TCP",isOn:$tcp)
+                Picker("Transport", selection: $transport) {
+                    Text("UDP (port 53)").tag("UDP")
+                    Text("TCP (port 53)").tag("TCP")
+                    Text("DoH (HTTPS)").tag("DoH")
+                }
                 Toggle("I authorize these resolver requests",isOn:$authorized)
                 Button("Query resolver(s)") { run() }.disabled(busy || !authorized)
                 if busy { Button("Cancel") { task?.cancel() } }
-                Text("Resolvers receive the queried name. Queries are not encrypted. SOA data is currently shown as raw hex; authority/additional sections are not displayed.").font(.caption)
+                Text("Resolvers receive the queried name. DoH uses encrypted HTTPS (RFC 8484); UDP/TCP queries are cleartext. SOA records display parsed master, mailbox, serial and timer fields.").font(.caption)
             }
             if !error.isEmpty { Text(error).foregroundStyle(.orange) }
             ForEach(responses.indices,id:\.self) { index in
@@ -298,7 +377,7 @@ struct DNSToolView: View {
         task = Task {
             defer { busy = false }
             for server in servers {
-                do { try Task.checkCancellation(); responses.append(try await DNSClient.query(name:name,type:type,resolver:server,tcp:tcp)) }
+                do { try Task.checkCancellation(); responses.append(try await DNSClient.query(name:name,type:type,resolver:server,tcp:transport == "TCP",doh:transport == "DoH")) }
                 catch { self.error += "\(server): \(error.localizedDescription)\n" }
             }
         }
@@ -383,3 +462,101 @@ struct OpenAPIView: View {
         }
     }
 }
+
+struct WebSocketToolView: View {
+    @Environment(\.scenePhase) private var phase
+    @State private var urlString = "wss://"
+    @State private var subprotocols = ""
+    @State private var origin = ""
+    @State private var authorized = false
+    @State private var busy = false
+    @State private var observation: WebSocketObservation?
+    @State private var error: String?
+    @State private var inspector: WebSocketInspector?
+    @State private var task: Task<Void, Never>?
+
+    var body: some View {
+        List {
+            Section("WebSocket endpoint") {
+                TextField("wss://host:port/path", text: $urlString)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                TextField("Optional subprotocols (comma-separated)", text: $subprotocols)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                TextField("Optional Origin header", text: $origin)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Toggle("Authorized target", isOn: $authorized)
+                Button("Test handshake") { testHandshake() }
+                    .disabled(!authorized || busy)
+                if busy {
+                    Button("Cancel") { cancel() }
+                }
+                Text("Tests RFC 6455 HTTP upgrade handshake and sends a single ping frame to verify bidirectional framing. Closes with status 1000. Strict TLS validation is always enforced.").font(.caption)
+            }
+
+            if let obs = observation {
+                Section("Handshake observation") {
+                    LabeledContent("Upgrade status", value: obs.handshakeSuccessful ? "Upgraded (101 Switching Protocols)" : "Failed")
+                        .foregroundStyle(obs.handshakeSuccessful ? .mint : .orange)
+                    if let proto = obs.subprotocol, !proto.isEmpty {
+                        LabeledContent("Negotiated subprotocol", value: proto)
+                    }
+                    if let rtt = obs.roundTripMilliseconds {
+                        LabeledContent("Ping round-trip", value: String(format: "%.1f ms", rtt))
+                    }
+                    if let err = obs.error {
+                        Text("Detail: \(err)").font(.caption).foregroundStyle(.orange)
+                    }
+                }
+            } else if let err = error {
+                Section("Error") {
+                    Text(err).font(.caption).foregroundStyle(.orange)
+                }
+            }
+        }
+        .navigationTitle("WebSocket handshake")
+        .onDisappear { cancel() }
+        .onChange(of: phase) { _, value in
+            if value == .background { cancel() }
+        }
+    }
+
+    private func testHandshake() {
+        guard let url = URL(string: urlString), let scheme = url.scheme?.lowercased(), ["ws", "wss"].contains(scheme) else {
+            error = "Invalid WebSocket URL. Must start with ws:// or wss://"
+            observation = nil
+            return
+        }
+        busy = true
+        error = nil
+        observation = nil
+        let insp = WebSocketInspector()
+        self.inspector = insp
+
+        let protos = subprotocols.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        let orig = origin.trimmingCharacters(in: .whitespaces).isEmpty ? nil : origin.trimmingCharacters(in: .whitespaces)
+
+        task = Task {
+            defer { busy = false }
+            let obs = await insp.inspect(url: url, protocols: protos, origin: orig)
+            if !Task.isCancelled {
+                self.observation = obs
+                if !obs.handshakeSuccessful && obs.error != nil {
+                    self.error = obs.error
+                }
+            }
+        }
+    }
+
+    private func cancel() {
+        task?.cancel()
+        let insp = inspector
+        Task {
+            await insp?.cancel()
+        }
+        busy = false
+    }
+}
+

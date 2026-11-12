@@ -88,6 +88,20 @@ enum DNSCodec {
             } else if type == 33 && length >= 7 {
                 var q = p+6; value = "priority=\(try u16(p)) weight=\(try u16(p+2)) port=\(try u16(p+4)) target=\(try name(&q))"
                 guard q <= end else { throw InputError.invalid("Invalid SRV record.") }
+            } else if type == 6 {
+                var q = p
+                let mname = try name(&q)
+                let rname = try name(&q)
+                guard q + 20 <= end else { throw InputError.invalid("Malformed SOA record.") }
+                func u32(_ off: Int) -> UInt32 {
+                    UInt32(b[off]) << 24 | UInt32(b[off+1]) << 16 | UInt32(b[off+2]) << 8 | UInt32(b[off+3])
+                }
+                let serial = u32(q)
+                let refresh = u32(q+4)
+                let retry = u32(q+8)
+                let expire = u32(q+12)
+                let minimum = u32(q+16)
+                value = "mname=\(mname) rname=\(rname) serial=\(serial) refresh=\(refresh)s retry=\(retry)s expire=\(expire)s minimum=\(minimum)s"
             } else if type == 16 {
                 var q = p; var strings: [String] = []
                 while q < end { let n = Int(b[q]); q += 1; guard q+n <= end else { throw InputError.invalid("Malformed TXT record.") }; strings.append(String(decoding: b[q..<(q+n)], as: UTF8.self)); q += n }
@@ -103,16 +117,40 @@ enum DNSCodec {
     }
 }
 enum DNSClient {
-    static func query(name: String, type: UInt16, resolver: String, tcp: Bool) async throws -> DNSResponse {
-        guard ScopeParser.validHost(resolver) else { throw InputError.invalid("Enter a valid resolver address.") }
+    static func query(name: String, type: UInt16, resolver: String, tcp: Bool, doh: Bool = false) async throws -> DNSResponse {
         let id = UInt16.random(in: 0...65535)
         let request = try DNSCodec.query(name: name, type: type, id: id)
-        var payload = Data()
-        if tcp { payload.append(UInt8(request.count >> 8)); payload.append(UInt8(request.count & 255)) }
-        payload.append(request)
         let started = Date()
-        let response = try await SocketExchange().run(host: resolver, port: 53, payload: payload, udp: !tcp, maxBytes: 65537, tcpDNS: tcp)
-        let parsed = try DNSCodec.parse(response, expectedID: id, expectedName: name, expectedType: type)
-        return DNSResponse(resolver: resolver, milliseconds: Date().timeIntervalSince(started)*1000, responseCode: parsed.0, truncated: parsed.1, records: parsed.2)
+        if doh {
+            let resolverURLString = resolver.lowercased().hasPrefix("http") ? resolver : "https://\(resolver)/dns-query"
+            guard let url = URL(string: resolverURLString), url.scheme?.lowercased() == "https", let host = url.host, !host.isEmpty else {
+                throw InputError.invalid("Enter a valid HTTPS URL for DoH (e.g. https://cloudflare-dns.com/dns-query).")
+            }
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.setValue("application/dns-message", forHTTPHeaderField: "Content-Type")
+            req.setValue("application/dns-message", forHTTPHeaderField: "Accept")
+            req.httpBody = request
+            let config = URLSessionConfiguration.ephemeral
+            config.timeoutIntervalForRequest = 8
+            config.timeoutIntervalForResource = 12
+            let session = URLSession(configuration: config)
+            let (data, response) = try await session.data(for: req)
+            session.finishTasksAndInvalidate()
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+                throw InputError.invalid("DoH resolver returned HTTP \(code).")
+            }
+            let parsed = try DNSCodec.parse(data, expectedID: id, expectedName: name, expectedType: type)
+            return DNSResponse(resolver: resolver, milliseconds: Date().timeIntervalSince(started)*1000, responseCode: parsed.0, truncated: parsed.1, records: parsed.2)
+        } else {
+            guard ScopeParser.validHost(resolver) else { throw InputError.invalid("Enter a valid resolver address.") }
+            var payload = Data()
+            if tcp { payload.append(UInt8(request.count >> 8)); payload.append(UInt8(request.count & 255)) }
+            payload.append(request)
+            let response = try await SocketExchange().run(host: resolver, port: 53, payload: payload, udp: !tcp, maxBytes: 65537, tcpDNS: tcp)
+            let parsed = try DNSCodec.parse(response, expectedID: id, expectedName: name, expectedType: type)
+            return DNSResponse(resolver: resolver, milliseconds: Date().timeIntervalSince(started)*1000, responseCode: parsed.0, truncated: parsed.1, records: parsed.2)
+        }
     }
 }

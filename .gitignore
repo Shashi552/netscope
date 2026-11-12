@@ -1,6 +1,5 @@
 .DS_Store
 .derivedData/
-Verification/
 *.xcuserstate
 xcuserdata/
 *.ipa

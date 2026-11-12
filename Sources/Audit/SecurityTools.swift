@@ -15,10 +15,18 @@ import CommonCrypto
 }
 enum SecretVault {
     static func put(_ value: String, account: String) throws {
-        let key: [String:Any] = [kSecClass as String:kSecClassGenericPassword, kSecAttrService as String:"app.netscope.secrets", kSecAttrAccount as String:account]
-        SecItemDelete(key as CFDictionary)
-        var item = key; item[kSecValueData as String] = Data(value.utf8); item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        guard SecItemAdd(item as CFDictionary, nil) == errSecSuccess else { throw InputError.invalid("Keychain write failed.") }
+        let query: [String:Any] = [kSecClass as String:kSecClassGenericPassword, kSecAttrService as String:"app.netscope.secrets", kSecAttrAccount as String:account]
+        let updateAttrs: [String:Any] = [kSecValueData as String: Data(value.utf8)]
+        let status = SecItemUpdate(query as CFDictionary, updateAttrs as CFDictionary)
+        if status == errSecSuccess { return }
+        if status == errSecItemNotFound {
+            var item = query
+            item[kSecValueData as String] = Data(value.utf8)
+            item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            guard SecItemAdd(item as CFDictionary, nil) == errSecSuccess else { throw InputError.invalid("Keychain write failed.") }
+        } else {
+            throw InputError.invalid("Keychain write failed.")
+        }
     }
     static func get(account: String) -> String? {
         let query: [String:Any] = [kSecClass as String:kSecClassGenericPassword,kSecAttrService as String:"app.netscope.secrets",kSecAttrAccount as String:account,kSecReturnData as String:true,kSecMatchLimit as String:kSecMatchLimitOne]

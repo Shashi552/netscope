@@ -39,6 +39,7 @@ import SwiftUI
     func resume(_ record: ScanRecord) {
         guard !running, canWrite else { return }
         current = record; current?.finishedAt = nil; current?.cancelled = false; current?.stopReason = nil
+        current?.resumedAt = Date(); current?.resumeCount = record.resumeCount + 1
         execute()
     }
     private func execute() {
@@ -50,6 +51,9 @@ import SwiftUI
             await TCPScanner().scan(hosts: initial.hosts, ports: initial.ports, concurrency: settings.concurrency, timeout: settings.timeout, retries: settings.retries, rate: settings.attemptsPerSecond, completed: completed) { [weak self] result in
                 guard let self else { return }
                 self.current?.results.append(result)
+                if result.state == .open {
+                    self.current?.openCount = (self.current?.openCount ?? 0) + 1
+                }
                 if (self.current?.results.count ?? 0) % 512 == 0 { self.writeCheckpoint() }
             }
             current?.finishedAt = Date(); current?.cancelled = Task.isCancelled
@@ -82,8 +86,18 @@ import SwiftUI
     }
     private func writeCheckpoint() {
         guard let current else { return }
-        do { try JSONEncoder().encode(current).write(to: checkpoint, options: [.atomic, .completeFileProtection]) }
-        catch { storageError = "Checkpoint failed: \(error.localizedDescription)" }
+        let snapshot = current
+        let target = checkpoint
+        Task.detached(priority: .utility) {
+            do {
+                let data = try JSONEncoder().encode(snapshot)
+                try data.write(to: target, options: [.atomic, .completeFileProtection])
+            } catch {
+                await MainActor.run { [weak self] in
+                    self?.storageError = "Checkpoint failed: \(error.localizedDescription)"
+                }
+            }
+        }
     }
     private func save() {
         guard canWrite else { return }
@@ -106,7 +120,8 @@ enum ScanExport {
     static func csv(_ record: ScanRecord) throws -> URL {
         func cell(_ text: String) -> String {
             // Prevent spreadsheet formula interpretation for exported untrusted fields.
-            let safe = ["=", "+", "-", "@", "\t", "\r"].contains(where: { text.hasPrefix($0) }) ? "'" + text : text
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let safe = ["=", "+", "-", "@", "\t", "\r", "|", "%"].contains(where: { trimmed.hasPrefix($0) }) ? "'" + text : text
             return "\"" + safe.replacingOccurrences(of: "\"", with: "\"\"") + "\""
         }
         var lines = ["host,port,state,connection_seconds,port_based_hint,evidence"]

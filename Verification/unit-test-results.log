@@ -1,0 +1,11 @@
+=== Running NetScope Test Suite ===
+[RUN] ScanInputTests
+[RUN] ScopeAndCodecTests
+[RUN] ArchiveAndComparisonTests
+[RUN] WebSocketTests
+
+=== Test Results Summary ===
+Total Assertions: 75
+Passed: 75
+Failed: 0
+ALL TESTS PASSED SUCCESSFULLY!

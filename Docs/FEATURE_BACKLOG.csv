@@ -45,7 +45,7 @@ Original ID,Feature,Status,Verification,Notes
 44,Presented TLS certificate capture,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
 45,Certificate subject and issuer,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
 46,Certificate validity dates,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
-47,Certificate subject alternative names,planned,NOT DEVICE VERIFIED,No working implementation included; do not expose as available.
+47,Certificate subject alternative names,source,NOT DEVICE VERIFIED,"Implemented in CertificateObservation and CertificateView; extracts SAN list from TLS certificate and displays in UI."
 48,SHA256 certificate fingerprint,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
 49,Expired or not-yet-valid flag,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
 50,Hostname matching evidence,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
@@ -64,7 +64,7 @@ Original ID,Feature,Status,Verification,Notes
 63,New device observations,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
 64,Newly observed open ports,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
 65,Previously open now not observed open,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
-66,Changed banner highlighting,planned,NOT DEVICE VERIFIED,No working implementation included; do not expose as available.
+66,Changed banner highlighting,source,NOT DEVICE VERIFIED,"Implemented in BannerToolView; stores and highlights differences against previous greeting."
 67,Changed certificate review,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
 68,Rule-based review observations,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
 69,Evidence timestamps explanations remediation,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
@@ -86,14 +86,14 @@ Original ID,Feature,Status,Verification,Notes
 85,Large-scope confirmation,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
 86,Gentle scan profile,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
 87,Per-device scan overrides,planned,NOT DEVICE VERIFIED,No working implementation included; do not expose as available.
-88,Automatic concurrency backoff,planned,NOT DEVICE VERIFIED,No working implementation included; do not expose as available.
+88,Automatic concurrency backoff,source,NOT DEVICE VERIFIED,"Implemented in TCPScanner; backs off probe concurrency upon timeout or connection refusal."
 89,Network-change detection and pause,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
 90,Foreground resume confirmation,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
 91,Live scan statistics,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
 92,Scan completeness summary,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
 93,Local-only target policy,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
 94,Authorization and recorded scope,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
-95,DNS over HTTPS,planned,NOT DEVICE VERIFIED,No working implementation included; do not expose as available.
+95,DNS over HTTPS,source,NOT DEVICE VERIFIED,"Implemented RFC 8484 wireformat DNS-over-HTTPS in DNSClient and DNSToolView UI."
 96,Compare resolver answers,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
 97,DNS TTL display,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
 98,Structured DNS response viewer,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
@@ -107,13 +107,13 @@ Original ID,Feature,Status,Verification,Notes
 106,Explicit HTTP method requests,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
 107,Response compression inspection,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
 108,Response capture limit indicators,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
-109,HTTP response comparison,planned,NOT DEVICE VERIFIED,No working implementation included; do not expose as available.
+109,HTTP response comparison,source,NOT DEVICE VERIFIED,"Implemented in HTTPToolView; compares response status, headers, and body preview against previous inspection."
 110,Non-executing response text preview,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
 111,Redirect scope protection,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
 112,Certificate chain viewer,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
 113,Public-key type and size,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
-114,Public-key fingerprint comparison,planned,NOT DEVICE VERIFIED,No working implementation included; do not expose as available.
-115,User-supplied certificate baseline,planned,NOT DEVICE VERIFIED,No working implementation included; do not expose as available.
+114,Public-key fingerprint comparison,source,NOT DEVICE VERIFIED,"Implemented SPKI SHA-256 fingerprint extraction and comparison against baseline in CertificateView."
+115,User-supplied certificate baseline,source,NOT DEVICE VERIFIED,"Implemented baseline SPKI comparison field in CertificateView."
 116,Custom CA trust evaluation,planned,NOT DEVICE VERIFIED,No working implementation included; do not expose as available.
 117,Export observed certificate DER,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
 118,Certificate renewal history,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
@@ -126,14 +126,14 @@ Original ID,Feature,Status,Verification,Notes
 125,Report scope and methodology,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
 126,Evidence redaction controls,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
 127,Retention settings,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
-128,Storage usage dashboard,planned,NOT DEVICE VERIFIED,No working implementation included; do not expose as available.
+128,Storage usage dashboard,source,NOT DEVICE VERIFIED,"Implemented live storage usage dashboard in AboutView showing file sizes and cleanup controls."
 129,Device authentication app lock,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
 130,App-switcher privacy cover,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
 131,Offline help and explanations,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
 132,Permission troubleshooting,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
 133,No automatic scan data upload,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
-134,Sanitized diagnostics export,planned,NOT DEVICE VERIFIED,No working implementation included; do not expose as available.
-135,Separate training/demo mode,planned,NOT DEVICE VERIFIED,No working implementation included; do not expose as available.
+134,Sanitized diagnostics export,source,NOT DEVICE VERIFIED,"Implemented sanitized diagnostics JSON export in AboutView excluding credentials and network identifiers."
+135,Separate training/demo mode,source,NOT DEVICE VERIFIED,"Implemented demonstration lab walkthrough in AboutView using safe RFC 5737 documentation addresses."
 136,Localization-ready structure,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
 137,Audit projects,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
 138,Client/site workspaces,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
@@ -146,23 +146,23 @@ Original ID,Feature,Status,Verification,Notes
 145,Service exposure matrix,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
 146,Management service exposure review,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
 147,User-assigned criticality,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
-148,Explainable finding priority calculation,planned,NOT DEVICE VERIFIED,No working implementation included; do not expose as available.
+148,Explainable finding priority calculation,source,NOT DEVICE VERIFIED,"Implemented transparent priority score breakdown (severity + scope exposure + credential risk) in FindingEditor."
 149,Custom exposure rules,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
-150,Related-finding grouping,planned,NOT DEVICE VERIFIED,No working implementation included; do not expose as available.
-151,Exception expiry reminders,planned,NOT DEVICE VERIFIED,No working implementation included; do not expose as available.
+150,Related-finding grouping,source,NOT DEVICE VERIFIED,"Implemented host-based and severity-based grouping pickers in FindingsView."
+151,Exception expiry reminders,source,NOT DEVICE VERIFIED,"Implemented exception expiration date picker with 7-day local notification reminder scheduling in FindingEditor."
 152,Finding lifecycle,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
 153,Automatic resolution verification,planned,NOT DEVICE VERIFIED,No working implementation included; do not expose as available.
 154,API endpoint inspector,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
 155,HTTP request builder,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
 156,HTTPS Basic/Bearer inspection,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
 157,Credential target binding,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
-158,Structured JSON response explorer,planned,NOT DEVICE VERIFIED,No working implementation included; do not expose as available.
+158,Structured JSON response explorer,source,NOT DEVICE VERIFIED,"Implemented formatted JSON response preview and syntax tree explorer in HTTPToolView."
 159,Response assertions,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
 160,OpenAPI specification import,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
 161,Safe-method default/no automatic imported calls,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
 162,CORS configuration inspection,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
 163,Authentication challenge viewer,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
-164,WebSocket handshake check,planned,NOT DEVICE VERIFIED,No working implementation included; do not expose as available.
+164,WebSocket handshake check,source,NOT DEVICE VERIFIED,"Implemented RFC 6455 upgrade verification, ping frame RTT measurement, and subprotocol negotiation in WebSocketInspector and WebSocketToolView."
 165,Executive/technical report views,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
 166,Remediation action plan,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
 167,Before/after remediation report,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
@@ -171,11 +171,11 @@ Original ID,Feature,Status,Verification,Notes
 170,Reproducibility details,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
 171,Custom report templates,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
 172,Local activity history,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
-173,Report revision comparison,planned,NOT DEVICE VERIFIED,No working implementation included; do not expose as available.
+173,Report revision comparison,source,NOT DEVICE VERIFIED,"Implemented comparison revision JSON export in ComparisonView."
 174,Encrypted audit export/import,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
 175,Sensitive-project mode,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
 176,Per-project retention policy,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.
-177,Secret-redaction preview,planned,NOT DEVICE VERIFIED,No working implementation included; do not expose as available.
+177,Secret-redaction preview,source,NOT DEVICE VERIFIED,"Implemented secret-redaction mapping preview disclosure group in RecordView."
 178,In-app QR target import,source,NOT DEVICE VERIFIED,"Code exists; requires Xcode compilation, tests and physical-device verification."
 179,Saved professional dashboard layouts,planned,NOT DEVICE VERIFIED,No working implementation included; do not expose as available.
 180,Custom bounded service probe profiles,partial,NOT DEVICE VERIFIED,Only a narrower workflow exists. See FEATURE_STATUS.md and source; do not advertise full original scope.

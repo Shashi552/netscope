@@ -33,8 +33,49 @@ struct ScanRecord: Identifiable, Codable {
     var cancelled: Bool
     var settings: ScanSettings? = nil
     var stopReason: String? = nil
-    var openCount: Int { results.filter { $0.state == .open }.count }
+    var openCount: Int
+    var resumedAt: Date? = nil
+    var resumeCount: Int = 0
     var plannedCount: Int { hosts.count * ports.count }
+
+    enum CodingKeys: String, CodingKey {
+        case id, startedAt, finishedAt, hosts, ports, results, cancelled, settings, stopReason, openCount, resumedAt, resumeCount
+    }
+
+    init(id: UUID = UUID(), startedAt: Date, finishedAt: Date? = nil, hosts: [String], ports: [UInt16], results: [PortResult], cancelled: Bool, settings: ScanSettings? = nil, stopReason: String? = nil, openCount: Int? = nil, resumedAt: Date? = nil, resumeCount: Int = 0) {
+        self.id = id
+        self.startedAt = startedAt
+        self.finishedAt = finishedAt
+        self.hosts = hosts
+        self.ports = ports
+        self.results = results
+        self.cancelled = cancelled
+        self.settings = settings
+        self.stopReason = stopReason
+        self.openCount = openCount ?? results.filter { $0.state == .open }.count
+        self.resumedAt = resumedAt
+        self.resumeCount = resumeCount
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        startedAt = try container.decode(Date.self, forKey: .startedAt)
+        finishedAt = try container.decodeIfPresent(Date.self, forKey: .finishedAt)
+        hosts = try container.decode([String].self, forKey: .hosts)
+        ports = try container.decode([UInt16].self, forKey: .ports)
+        results = try container.decode([PortResult].self, forKey: .results)
+        cancelled = try container.decode(Bool.self, forKey: .cancelled)
+        settings = try container.decodeIfPresent(ScanSettings.self, forKey: .settings)
+        stopReason = try container.decodeIfPresent(String.self, forKey: .stopReason)
+        resumedAt = try container.decodeIfPresent(Date.self, forKey: .resumedAt)
+        resumeCount = try container.decodeIfPresent(Int.self, forKey: .resumeCount) ?? 0
+        if let decodedOpen = try container.decodeIfPresent(Int.self, forKey: .openCount) {
+            openCount = decodedOpen
+        } else {
+            openCount = results.filter { $0.state == .open }.count
+        }
+    }
 }
 enum InputError: LocalizedError {
     case invalid(String)

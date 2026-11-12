@@ -16,5 +16,15 @@ final class ScanInputTests: XCTestCase {
         let decoded = try JSONDecoder().decode(ScanRecord.self, from: JSONEncoder().encode(record))
         XCTAssertEqual(decoded.id, record.id)
         XCTAssertEqual(decoded.plannedCount, 1)
+        XCTAssertEqual(decoded.openCount, 0)
+    }
+    func testLegacyRecordDecoding() throws {
+        let legacyJSON = """
+        {"id":"00000000-0000-0000-0000-000000000001","startedAt":1700000000,"hosts":["192.168.1.1"],"ports":[80,443],"results":[{"id":"00000000-0000-0000-0000-000000000002","host":"192.168.1.1","port":80,"state":"open","duration":0.05,"detail":"connected"},{"id":"00000000-0000-0000-0000-000000000003","host":"192.168.1.1","port":443,"state":"refused","duration":0.02,"detail":"refused"}],"cancelled":false}
+        """.data(using: .utf8)!
+        let legacyDecoded = try JSONDecoder().decode(ScanRecord.self, from: legacyJSON)
+        XCTAssertEqual(legacyDecoded.openCount, 1)
+        XCTAssertEqual(legacyDecoded.resumeCount, 0)
+        XCTAssertNil(legacyDecoded.resumedAt)
     }
 }

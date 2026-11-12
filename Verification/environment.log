@@ -1,0 +1,6 @@
+xcode-select -p: /Library/Developer/CommandLineTools
+swift --version: Apple Swift version 5.7.2 (swiftlang-5.7.2.135.5 clang-1400.0.29.51)
+Target: x86_64-apple-darwin21.6.0
+sw_vers: ProductName:	macOS
+ProductVersion:	12.7.6
+BuildVersion:	21H1320

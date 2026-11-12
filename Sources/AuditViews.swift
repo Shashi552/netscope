@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import UserNotifications
 
 struct AuditHubView: View {
     @EnvironmentObject private var audit: AuditStore
@@ -141,15 +142,58 @@ struct FindingsView: View {
     @EnvironmentObject private var audit: AuditStore
     @State private var editing: AuditFinding?
     @State private var query = ""
+    @State private var groupBy = "Flat"
+    private var filteredFindings: [AuditFinding] {
+        audit.database.findings.filter { query.isEmpty || "\($0.title) \($0.host) \($0.status)".localizedCaseInsensitiveContains(query) }
+    }
     var body: some View {
         List {
-            ForEach(audit.database.findings.filter { query.isEmpty || "\($0.title) \($0.host) \($0.status)".localizedCaseInsensitiveContains(query) }) { finding in
-                Button { editing = finding } label: { VStack(alignment:.leading,spacing:5) { Text(finding.title).font(.headline); Text("\(finding.host) · \(finding.severity) · \(finding.status)").font(.caption); Text("Confidence: \(finding.confidence)").font(.caption).foregroundStyle(.secondary) } }.buttonStyle(.plain)
+            Section {
+                Picker("View layout", selection: $groupBy) {
+                    Text("Flat").tag("Flat")
+                    Text("By Host").tag("By Host")
+                    Text("By Severity").tag("By Severity")
+                }.pickerStyle(.segmented)
+            }
+            if groupBy == "Flat" {
+                ForEach(filteredFindings) { finding in
+                    findingRow(finding)
+                }
+            } else if groupBy == "By Host" {
+                let hosts = Array(Set(filteredFindings.map(\.host))).sorted()
+                ForEach(hosts, id: \.self) { host in
+                    Section(host.isEmpty ? "Unspecified host" : host) {
+                        ForEach(filteredFindings.filter { $0.host == host }) { finding in
+                            findingRow(finding)
+                        }
+                    }
+                }
+            } else {
+                let severities = ["Critical", "High", "Medium", "Low", "Informational"]
+                ForEach(severities, id: \.self) { severity in
+                    let items = filteredFindings.filter { $0.severity == severity }
+                    if !items.isEmpty {
+                        Section(severity) {
+                            ForEach(items) { finding in
+                                findingRow(finding)
+                            }
+                        }
+                    }
+                }
             }
             if audit.database.findings.isEmpty { ContentUnavailableView("No findings",systemImage:"checklist",description:Text("Record evidence-based observations, not assumptions from port numbers.")) }
         }.navigationTitle("Findings").searchable(text:$query)
         .toolbar { Button { editing = AuditFinding() } label: { Image(systemName:"plus") } }
         .sheet(item:$editing) { finding in FindingEditor(finding:finding) }
+    }
+    private func findingRow(_ finding: AuditFinding) -> some View {
+        Button { editing = finding } label: {
+            VStack(alignment:.leading,spacing:5) {
+                Text(finding.title).font(.headline)
+                Text("\(finding.host) · \(finding.severity) · \(finding.status)").font(.caption)
+                Text("Confidence: \(finding.confidence)").font(.caption).foregroundStyle(.secondary)
+            }
+        }.buttonStyle(.plain)
     }
 }
 struct FindingEditor: View {
@@ -157,6 +201,37 @@ struct FindingEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State var finding: AuditFinding
     @State private var confirmDelete = false
+    @State private var exposure = "Internal / Private"
+    @State private var reminderMessage = ""
+
+    private var calculatedPriority: (score: Double, rating: String, explanation: String) {
+        let baseWeight: Double = {
+            switch finding.severity {
+            case "Critical": return 10.0
+            case "High": return 8.0
+            case "Medium": return 5.0
+            case "Low": return 2.0
+            default: return 0.5
+            }
+        }()
+        let expMultiplier: Double = {
+            if exposure.contains("Public") { return 1.5 }
+            if exposure.contains("DMZ") { return 1.2 }
+            return 1.0
+        }()
+        let confMultiplier: Double = {
+            switch finding.confidence {
+            case "Manually verified": return 1.2
+            case "Observed": return 1.0
+            default: return 0.7
+            }
+        }()
+        let score = min(10.0, (baseWeight * expMultiplier * confMultiplier * 10).rounded() / 10)
+        let rating = score >= 8.5 ? "Urgent Priority" : score >= 6.0 ? "High Priority" : score >= 3.5 ? "Medium Priority" : "Low Priority"
+        let explanation = "Calculated score: \(score)/10 (\(rating)). Weighted by \(finding.severity) severity × \(exposure) location × \(finding.confidence) confidence."
+        return (score, rating, explanation)
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -165,9 +240,31 @@ struct FindingEditor: View {
                 Picker("Severity",selection:$finding.severity) { ForEach(["Informational","Low","Medium","High","Critical"],id:\.self) { Text($0) } }
                 Picker("Confidence",selection:$finding.confidence) { ForEach(["Observed","Potential","Manually verified"],id:\.self) { Text($0) } }
                 Picker("Status",selection:$finding.status) { ForEach(["Open","Acknowledged","Accepted risk","Retest needed","Resolved (manual)"],id:\.self) { Text($0) } }
+                Section("Priority guide & factors") {
+                    Picker("Network exposure", selection: $exposure) {
+                        Text("Internal / Private").tag("Internal / Private")
+                        Text("DMZ / Restricted").tag("DMZ / Restricted")
+                        Text("Public / Internet").tag("Public / Internet")
+                    }
+                    Text(calculatedPriority.explanation).font(.caption).foregroundStyle(.secondary)
+                }
+                Section("Risk acceptance & exception expiry") {
+                    Toggle("Set exception expiration", isOn: Binding(
+                        get: { finding.exceptionExpires != nil },
+                        set: { if $0 { finding.exceptionExpires = Date().addingTimeInterval(30*86400) } else { finding.exceptionExpires = nil } }
+                    ))
+                    if let expires = finding.exceptionExpires {
+                        DatePicker("Expires", selection: Binding(
+                            get: { expires },
+                            set: { finding.exceptionExpires = $0 }
+                        ), displayedComponents: .date)
+                        Button("Schedule 7-day reminder before expiry") { scheduleExpiryReminder(for: expires) }
+                        if !reminderMessage.isEmpty { Text(reminderMessage).font(.caption) }
+                    }
+                }
                 Section("Evidence") { TextEditor(text:$finding.evidence).frame(minHeight:100) }
                 Section("Remediation") { TextEditor(text:$finding.remediation).frame(minHeight:100) }
-                Text("Severity, confidence, and resolution are user assertions. This app does not automatically verify exploitability or resolution.").font(.caption)
+                Text("Severity, confidence, priority score, and resolution are user assertions. This app does not automatically verify exploitability or resolution.").font(.caption)
                 if audit.database.findings.contains(where:{ $0.id == finding.id }) { Button("Delete finding",role:.destructive) { confirmDelete = true } }
             }.navigationTitle("Finding").toolbar {
                 ToolbarItem(placement:.cancellationAction) { Button("Cancel") { dismiss() } }
@@ -175,11 +272,32 @@ struct FindingEditor: View {
             }.confirmationDialog("Delete this finding?",isPresented:$confirmDelete,titleVisibility:.visible) { Button("Delete",role:.destructive) { audit.database.findings.removeAll { $0.id == finding.id }; audit.save("Deleted finding"); dismiss() } }
         }
     }
+    private func scheduleExpiryReminder(for date: Date) {
+        let triggerDate = date.addingTimeInterval(-7*86400)
+        guard triggerDate > Date() else { reminderMessage = "The 7-day advance notice period has already passed."; return }
+        Task {
+            do {
+                let center = UNUserNotificationCenter.current()
+                guard try await center.requestAuthorization(options: [.alert, .sound]) else { reminderMessage = "Notification permission not granted."; return }
+                let content = UNMutableNotificationContent()
+                content.title = "Finding Exception Expiring"
+                content.body = "Risk acceptance exception for '\(finding.title)' expires in 7 days. Open NetScope to review."
+                let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: triggerDate)
+                let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
+                try await center.add(UNNotificationRequest(identifier: "finding-" + finding.id.uuidString, content: content, trigger: trigger))
+                reminderMessage = "Reminder scheduled for \(triggerDate.formatted(date: .abbreviated, time: .shortened))."
+            } catch {
+                reminderMessage = error.localizedDescription
+            }
+        }
+    }
 }
 struct ComparisonView: View {
     @EnvironmentObject private var scans: ScanStore
     @State private var oldID: UUID?
     @State private var newID: UUID?
+    @State private var exportURL: URL?
+    @State private var exportError: String?
     var body: some View {
         List {
             Section {
@@ -192,6 +310,28 @@ struct ComparisonView: View {
                     if differences.isEmpty { Text("No open-port differences in the recorded observations.") }
                     ForEach(differences) { difference in VStack(alignment:.leading) { Text("\(difference.host):\(difference.port)").font(.body.monospaced()); Text(difference.change).font(.caption) } }
                     Text("Different scan scopes, retries, network paths, and incomplete scans can explain changes. Not checked is not closed.").font(.caption)
+                    Button("Export comparison revision report") {
+                        do {
+                            let report: [String: Any] = [
+                                "baselineScanID": old.id.uuidString,
+                                "baselineDate": old.startedAt.ISO8601Format(),
+                                "newScanID": new.id.uuidString,
+                                "newDate": new.startedAt.ISO8601Format(),
+                                "differences": differences.map { ["host": $0.host, "port": $0.port, "change": $0.change] },
+                                "generatedAt": Date().ISO8601Format()
+                            ]
+                            let data = try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
+                            exportURL = try ExportFiles.write(data, name: "Comparison-\(UUID()).json")
+                        } catch {
+                            exportError = error.localizedDescription
+                        }
+                    }
+                    if let exportURL {
+                        ShareLink(item: exportURL) { Label("Share comparison revision JSON", systemImage: "square.and.arrow.up") }
+                    }
+                    if let exportError {
+                        Text(exportError).font(.caption).foregroundStyle(.orange)
+                    }
                 }
             }
         }.navigationTitle("Compare scans")

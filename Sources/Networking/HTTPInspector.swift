@@ -5,13 +5,49 @@ import CryptoKit
 struct CertificateObservation: Codable, Identifiable {
     var id: String { sha256 }
     let subject: String
+    let issuer: String
     let sha256: String
+    let spkiSHA256: String?
+    let san: [String]
     let derBase64: String
     let publicKeyType: String
     let publicKeyBits: Int
     let notBefore: Date?
     let notAfter: Date?
     let trustStatus: String
+
+    enum CodingKeys: String, CodingKey {
+        case subject, issuer, sha256, spkiSHA256, san, derBase64, publicKeyType, publicKeyBits, notBefore, notAfter, trustStatus
+    }
+
+    init(subject: String, issuer: String = "Evaluated chain", sha256: String, spkiSHA256: String? = nil, san: [String] = [], derBase64: String, publicKeyType: String, publicKeyBits: Int, notBefore: Date?, notAfter: Date?, trustStatus: String) {
+        self.subject = subject
+        self.issuer = issuer
+        self.sha256 = sha256
+        self.spkiSHA256 = spkiSHA256
+        self.san = san
+        self.derBase64 = derBase64
+        self.publicKeyType = publicKeyType
+        self.publicKeyBits = publicKeyBits
+        self.notBefore = notBefore
+        self.notAfter = notAfter
+        self.trustStatus = trustStatus
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        subject = try container.decode(String.self, forKey: .subject)
+        issuer = try container.decodeIfPresent(String.self, forKey: .issuer) ?? "Evaluated chain"
+        sha256 = try container.decode(String.self, forKey: .sha256)
+        spkiSHA256 = try container.decodeIfPresent(String.self, forKey: .spkiSHA256)
+        san = try container.decodeIfPresent([String].self, forKey: .san) ?? []
+        derBase64 = try container.decode(String.self, forKey: .derBase64)
+        publicKeyType = try container.decode(String.self, forKey: .publicKeyType)
+        publicKeyBits = try container.decode(Int.self, forKey: .publicKeyBits)
+        notBefore = try container.decodeIfPresent(Date.self, forKey: .notBefore)
+        notAfter = try container.decodeIfPresent(Date.self, forKey: .notAfter)
+        trustStatus = try container.decode(String.self, forKey: .trustStatus)
+    }
 }
 // Minimal bounded DER reader used only to extract the X.509 validity sequence.
 // Trust and hostname checks remain the responsibility of Apple's Security framework.
@@ -161,12 +197,30 @@ final class HTTPInspector: NSObject, URLSessionDataDelegate, @unchecked Sendable
             certificates = chain.map { cert in
                 let data = SecCertificateCopyData(cert) as Data
                 var keyType = "Unknown"; var keyBits = 0
-                if let key = SecCertificateCopyKey(cert), let attributes = SecKeyCopyAttributes(key) as? [String:Any] {
-                    keyType = String(describing: attributes[kSecAttrKeyType as String] ?? "Unknown")
-                    keyBits = attributes[kSecAttrKeySizeInBits as String] as? Int ?? 0
+                var spkiSHA256: String? = nil
+                if let key = SecCertificateCopyKey(cert) {
+                    if let attributes = SecKeyCopyAttributes(key) as? [String:Any] {
+                        keyType = String(describing: attributes[kSecAttrKeyType as String] ?? "Unknown")
+                        keyBits = attributes[kSecAttrKeySizeInBits as String] as? Int ?? 0
+                    }
+                    if let keyData = SecKeyCopyExternalRepresentation(key, nil) as Data? {
+                        spkiSHA256 = SHA256.hash(data: keyData).map { String(format: "%02x", $0) }.joined()
+                    }
                 }
                 let dates = CertificateDates.read(data)
-                return CertificateObservation(subject: SecCertificateCopySubjectSummary(cert) as String? ?? "Certificate", sha256: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(), derBase64: data.base64EncodedString(), publicKeyType: keyType, publicKeyBits: keyBits, notBefore: dates.0, notAfter: dates.1, trustStatus: status)
+                var sanList: [String] = []
+                var errorCF: Unmanaged<CFError>?
+                if let dict = SecCertificateCopyValues(cert, [kSecOIDSubjectAltName] as CFArray, &errorCF) as? [String:Any],
+                   let sanDict = dict[kSecOIDSubjectAltName as String] as? [String:Any],
+                   let items = sanDict[kSecPropertyKeyValue as String] as? [[String:Any]] {
+                    sanList = items.compactMap { entry in
+                        guard let val = entry[kSecPropertyKeyValue as String] as? String else { return nil }
+                        let label = entry[kSecPropertyKeyLabel as String] as? String ?? "Name"
+                        return "\(label): \(val)"
+                    }
+                }
+                let subject = SecCertificateCopySubjectSummary(cert) as String? ?? "Certificate"
+                return CertificateObservation(subject: subject, issuer: "Chain certificate", sha256: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(), spkiSHA256: spkiSHA256, san: sanList, derBase64: data.base64EncodedString(), publicKeyType: keyType, publicKeyBits: keyBits, notBefore: dates.0, notAfter: dates.1, trustStatus: status)
             }
         }
         // Never bypass a failed certificate/hostname check, including for authenticated requests.
@@ -196,7 +250,7 @@ final class HTTPInspector: NSObject, URLSessionDataDelegate, @unchecked Sendable
             headers[name] = ["set-cookie", "authorization", "proxy-authenticate"].contains(name) ? "[redacted]" : String(describing: value)
         }
         let last = metrics?.transactionMetrics.last
-        let observation = HTTPObservation(date: started, url: requestURL, method: method, status: response?.statusCode ?? 0, headers: headers, bodyPreview: String(decoding: body.prefix(32768), as: UTF8.self), bodySHA256: SHA256.hash(data: body).map { String(format: "%02x", $0) }.joined(), bytesCaptured: body.count, truncated: truncated, elapsed: Date().timeIntervalSince(started), negotiatedProtocol: last?.networkProtocolName, tlsVersion: last?.negotiatedTLSProtocolVersion?.uint16Value, cipherSuite: last?.negotiatedTLSCipherSuite?.uint16Value, certificates: certificates, error: truncated ? "Body capture stopped at 128 KiB; hash is of captured bytes only." : error?.localizedDescription)
+        let observation = HTTPObservation(date: started, url: requestURL, method: method, status: response?.statusCode ?? 0, headers: headers, bodyPreview: String(decoding: body.prefix(32768), as: UTF8.self), bodySHA256: SHA256.hash(data: body).map { String(format: "%02x", $0) }.joined(), bytesCaptured: body.count, truncated: truncated, elapsed: Date().timeIntervalSince(started), negotiatedProtocol: last?.networkProtocolName, tlsVersion: last?.negotiatedTLSProtocolVersion.map { UInt16($0.rawValue) }, cipherSuite: last?.negotiatedTLSCipherSuite.map { UInt16($0.rawValue) }, certificates: certificates, error: truncated ? "Body capture stopped at 128 KiB; hash is of captured bytes only." : error?.localizedDescription)
         continuation?.resume(returning: observation)
     }
 }

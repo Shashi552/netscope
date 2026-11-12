@@ -22,10 +22,15 @@ private final class TCPProbe: @unchecked Sendable {
                     continuation.resume(returning: result(.error, "Cancelled"))
                     return
                 }
+                guard let endpointPort = NWEndpoint.Port(rawValue: port) else {
+                    lock.unlock()
+                    continuation.resume(returning: result(.error, "Invalid port 0"))
+                    return
+                }
                 self.continuation = continuation
                 let parameters = NWParameters.tcp
                 parameters.includePeerToPeer = false
-                let connection = NWConnection(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: port)!, using: parameters)
+                let connection = NWConnection(host: NWEndpoint.Host(host), port: endpointPort, using: parameters)
                 self.connection = connection
                 let timer = DispatchWorkItem { [weak self] in self?.finish(.timedOut, "No connection established within the configured timeout; not proof of a closed port.") }
                 self.timer = timer
@@ -65,6 +70,7 @@ private final class TCPProbe: @unchecked Sendable {
         self.timer = nil
         lock.unlock()
         timer?.cancel()
+        connection?.stateUpdateHandler = nil
         connection?.cancel()
         continuation?.resume(returning: result(state, detail))
     }

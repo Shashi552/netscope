@@ -11,12 +11,15 @@ final class SocketExchange: @unchecked Sendable {
     private var timer: DispatchWorkItem?
     private let queue = DispatchQueue(label: "app.netscope.exchange.\(UUID())")
     func run(host: String, port: UInt16, payload: Data?, udp: Bool = false, timeout: Double = 5, maxBytes: Int = 8192, tcpDNS: Bool = false) async throws -> Data {
-        try await withTaskCancellationHandler {
+        guard !host.isEmpty, let endpointPort = NWEndpoint.Port(rawValue: port) else {
+            throw InputError.invalid("Invalid host or port.")
+        }
+        return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 lock.lock()
                 guard !done else { lock.unlock(); continuation.resume(throwing: CancellationError()); return }
                 self.continuation = continuation
-                let connection = NWConnection(host: .init(host), port: .init(rawValue: port)!, using: udp ? .udp : .tcp)
+                let connection = NWConnection(host: .init(host), port: endpointPort, using: udp ? .udp : .tcp)
                 self.connection = connection
                 let deadline = DispatchWorkItem { [weak self] in self?.finish(.failure(InputError.invalid("No response before the deadline."))) }
                 timer = deadline
@@ -65,6 +68,6 @@ final class SocketExchange: @unchecked Sendable {
         let connection = self.connection; self.connection = nil
         let timer = self.timer; self.timer = nil
         lock.unlock()
-        timer?.cancel(); connection?.cancel(); continuation?.resume(with: result)
+        timer?.cancel(); connection?.stateUpdateHandler = nil; connection?.cancel(); continuation?.resume(with: result)
     }
 }
