@@ -258,9 +258,7 @@ struct ScanLiveSection: View {
         }
     }
 }
-        } catch { self.error = error.localizedDescription }
-    }
-}
+
 struct ScanSummary: View {
     let record: ScanRecord
     var body: some View {
