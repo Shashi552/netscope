@@ -1,0 +1,78 @@
+name: Build NetScope.ipa
+
+# Produces a real, sideloadable NetScope.ipa in GitHub Actions -- no local Xcode needed.
+#   1. Push this repo to GitHub
+#   2. Actions -> "Build NetScope.ipa" -> Run workflow
+#   3. Download the "NetScope-ipa" artifact, unzip -> NetScope.ipa
+#
+# The artifact is unsigned. LiveContainer / TrollStore install it directly;
+# Sideloadly / AltStore re-sign it with your own Apple ID certificate.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          echo "xcode-select: $(xcode-select -p)"
+
+      - name: Lint Plists & Project
+        run: |
+          plutil -lint Info.plist Resources/PrivacyInfo.xcprivacy NetScope.xcodeproj/project.pbxproj
+
+      - name: Build .ipa
+        run: |
+          chmod +x Scripts/build-ipa.sh
+          ./Scripts/build-ipa.sh
+
+      - name: Verify the bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          IPA=build/NetScope.ipa
+          test -f "$IPA" || { echo "::error::no .ipa produced"; exit 1; }
+
+          rm -rf /tmp/verify && mkdir -p /tmp/verify
+          unzip -q "$IPA" -d /tmp/verify
+          APP=/tmp/verify/Payload/NetScope.app
+          test -d "$APP" || { echo "::error::Payload/NetScope.app missing"; exit 1; }
+
+          # Verify binary
+          lipo -info "$APP/NetScope" | tee /tmp/lipo.txt
+          grep -q arm64 /tmp/lipo.txt || { echo "::error::binary is not arm64"; exit 1; }
+
+          BID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier"  "$APP/Info.plist")
+          MIN=$(/usr/libexec/PlistBuddy -c "Print :MinimumOSVersion"    "$APP/Info.plist")
+          NAME=$(/usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$APP/Info.plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Print :CFBundleName" "$APP/Info.plist")
+          echo "  bundle id : $BID"
+          echo "  min iOS   : $MIN"
+          echo "  name      : $NAME"
+          test "$BID"  = "app.netscope.iphone" || { echo "::error::wrong bundle id"; exit 1; }
+          test "$MIN"  = "17.0"                || { echo "::error::wrong minimum iOS"; exit 1; }
+
+          du -h "$IPA"
+          echo "ALL GATES PASSED"
+
+      - name: Upload the .ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: NetScope-ipa
+          path: build/NetScope.ipa
+          if-no-files-found: error
+          retention-days: 30
