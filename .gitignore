@@ -1,0 +1,9 @@
+.DS_Store
+.derivedData/
+Verification/
+*.xcuserstate
+xcuserdata/
+*.ipa
+*.p12
+*.mobileprovision
+*.zip
