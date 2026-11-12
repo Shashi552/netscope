@@ -93,6 +93,37 @@ enum CertificateDates {
         return (date(first), date(second))
     }
 }
+enum CertificateSANs {
+    static func extract(from data: Data) -> [String] {
+        let bytes = [UInt8](data)
+        var sans: [String] = []
+        guard bytes.count > 10 else { return [] }
+        for i in 0..<(bytes.count - 3) {
+            if bytes[i] == 0x55 && bytes[i+1] == 0x1d && bytes[i+2] == 0x11 {
+                var j = i + 3
+                let limit = min(bytes.count, j + 1024)
+                while j + 2 < limit {
+                    if bytes[j] == 0x82 {
+                        let len = Int(bytes[j+1])
+                        if len > 0 && len < 256 && j + 2 + len <= limit {
+                            let dnsBytes = bytes[(j+2)..<(j+2+len)]
+                            if let name = String(bytes: dnsBytes, encoding: .ascii),
+                               name.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" || $0 == "*" }) {
+                                let label = "DNS: \(name)"
+                                if !sans.contains(label) { sans.append(label) }
+                                j += 2 + len
+                                continue
+                            }
+                        }
+                    }
+                    j += 1
+                }
+                break
+            }
+        }
+        return sans
+    }
+}
 struct HTTPObservation: Codable, Identifiable {
     var id = UUID()
     let date: Date
@@ -208,17 +239,7 @@ final class HTTPInspector: NSObject, URLSessionDataDelegate, @unchecked Sendable
                     }
                 }
                 let dates = CertificateDates.read(data)
-                var sanList: [String] = []
-                var errorCF: Unmanaged<CFError>?
-                if let dict = SecCertificateCopyValues(cert, [kSecOIDSubjectAltName] as CFArray, &errorCF) as? [String:Any],
-                   let sanDict = dict[kSecOIDSubjectAltName as String] as? [String:Any],
-                   let items = sanDict[kSecPropertyKeyValue as String] as? [[String:Any]] {
-                    sanList = items.compactMap { entry in
-                        guard let val = entry[kSecPropertyKeyValue as String] as? String else { return nil }
-                        let label = entry[kSecPropertyKeyLabel as String] as? String ?? "Name"
-                        return "\(label): \(val)"
-                    }
-                }
+                let sanList = CertificateSANs.extract(from: data)
                 let subject = SecCertificateCopySubjectSummary(cert) as String? ?? "Certificate"
                 return CertificateObservation(subject: subject, issuer: "Chain certificate", sha256: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(), spkiSHA256: spkiSHA256, san: sanList, derBase64: data.base64EncodedString(), publicKeyType: keyType, publicKeyBits: keyBits, notBefore: dates.0, notAfter: dates.1, trustStatus: status)
             }
