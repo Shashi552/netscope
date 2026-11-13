@@ -53,6 +53,7 @@
 ### 1. Subnet & Port Assessment
 * **Scope Parser:** Target hostnames, IPv4, IPv6, CIDR blocks (`/20` through `/32`), and hyphenated ranges (`192.168.1.1-192.168.1.100`).
 * **Presets & Custom Ports:** Quick profiles for Web, Common (Top 30), or arbitrary port ranges up to 65,535.
+* **Continuous Background Keep-Alive:** Inaudible silent audio loop (`AVAudioSession` `.playback` mode + `UIBackgroundModes: audio`) ensures long subnet sweeps and scans run continuously without interruption when locking your iPhone or switching apps. Sends a local notification on scan completion.
 * **Adaptive Concurrency & Backoff:** Rate-limited concurrent TCP-connect probes that gracefully back off on timeouts or network congestion.
 * **Checkpoint & Resume:** State is persisted incrementally; resume interrupted assessments across app launches.
 

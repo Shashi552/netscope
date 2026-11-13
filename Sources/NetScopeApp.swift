@@ -46,7 +46,13 @@ struct AppShell: View {
             if lockEnabled { await security.unlock() }
         }
         .onChange(of:phase) { _, value in
-            if value == .background { if store.running { store.cancel(reason:"App moved to background") }; security.unlocked = false }
+            let bgEnabled = UserDefaults.standard.bool(forKey: "backgroundScanning")
+            if value == .background {
+                if store.running && !bgEnabled {
+                    store.cancel(reason:"App moved to background")
+                }
+                security.unlocked = false
+            }
         }
         .onChange(of:lockEnabled) { _, enabled in if enabled { security.unlocked = false; Task { await security.unlock() } } }
     }
@@ -115,7 +121,10 @@ struct ScanView: View {
                 Button("Cancel",role:.cancel) {}
             } message: { Text("Saves target/port lists, concurrency and timeout. Exclusions, retries and rate are not included; review them when loading a profile.") }
             .onChange(of: phase) { _, phase in
-                if phase == .background && store.running { store.cancel() }
+                let bgEnabled = UserDefaults.standard.bool(forKey: "backgroundScanning")
+                if phase == .background && store.running && !bgEnabled {
+                    store.cancel()
+                }
             }
         }
     }
@@ -194,6 +203,7 @@ struct ScanProfilesSection: View {
     }
 }
 struct ScanConfigSection: View {
+    @AppStorage("backgroundScanning") private var backgroundScanning = false
     @Binding var ports: String
     @Binding var concurrency: Int
     @Binding var timeout: Double
@@ -218,6 +228,12 @@ struct ScanConfigSection: View {
                 Text("Timeout: \(timeout, specifier: "%.1f") seconds")
                 Slider(value: $timeout, in: 0.5...10, step: 0.5)
             }
+            Toggle("Continuous background scanning", isOn: $backgroundScanning)
+                .onChange(of: backgroundScanning) { _, enabled in
+                    if enabled { BackgroundKeepAlive.shared.requestNotificationPermission() }
+                }
+            Text("Runs an inaudible background keepalive session so scans continue when you lock your iPhone or switch apps.")
+                .font(.caption).foregroundStyle(.secondary)
             Button("Use gentle settings") { concurrency = 4; timeout = 4 }
                 .buttonStyle(.borderless)
         }.disabled(running)
@@ -428,6 +444,7 @@ struct AboutView: View {
     @EnvironmentObject private var audit: AuditStore
     @AppStorage("appLock") private var appLock = false
     @AppStorage("theme") private var theme = "System"
+    @AppStorage("backgroundScanning") private var backgroundScanning = false
     @State private var confirmDelete = false
     @State private var importScan = false
     @State private var message = ""
@@ -442,6 +459,14 @@ struct AboutView: View {
                     Toggle("Require device authentication",isOn:$appLock)
                     Picker("Appearance",selection:$theme) { ForEach(["System","Dark","Light"],id:\.self) { Text($0) } }
                     Text("App-switcher privacy cover is enabled. Device lock requires a configured passcode; enable only after testing authentication on your device.").font(.caption)
+                }
+                Section("Background execution") {
+                    Toggle("Continuous background scanning", isOn: $backgroundScanning)
+                        .onChange(of: backgroundScanning) { _, enabled in
+                            if enabled { BackgroundKeepAlive.shared.requestNotificationPermission() }
+                        }
+                    Text("Uses an inaudible audio keep-alive session to keep network sockets active while your iPhone is locked or in the background. Completed scans trigger a local notification.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("Storage usage dashboard") {
                     LabeledContent("Scan history storage", value: ByteCountFormatter.string(fromByteCount: storageStats.scansBytes, countStyle: .file))

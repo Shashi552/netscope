@@ -34,12 +34,18 @@ import SwiftUI
         guard !running, canWrite else { return }
         current = ScanRecord(startedAt: Date(), hosts: hosts, ports: ports, results: [], cancelled: false,
                              settings: ScanSettings(concurrency: concurrency, timeout: timeout, retries: retries, attemptsPerSecond: rate))
+        if UserDefaults.standard.bool(forKey: "backgroundScanning") {
+            BackgroundKeepAlive.shared.start()
+        }
         execute()
     }
     func resume(_ record: ScanRecord) {
         guard !running, canWrite else { return }
         current = record; current?.finishedAt = nil; current?.cancelled = false; current?.stopReason = nil
         current?.resumedAt = Date(); current?.resumeCount = record.resumeCount + 1
+        if UserDefaults.standard.bool(forKey: "backgroundScanning") {
+            BackgroundKeepAlive.shared.start()
+        }
         execute()
     }
     private func execute() {
@@ -60,11 +66,21 @@ import SwiftUI
             if let current {
                 records.removeAll { $0.id == current.id }; records.insert(current, at: 0); save()
                 try? FileManager.default.removeItem(at: checkpoint)
+                if BackgroundKeepAlive.shared.isActive {
+                    BackgroundKeepAlive.shared.notifyScanCompleted(hostsCount: current.hosts.count, openPortsCount: current.openCount)
+                    BackgroundKeepAlive.shared.stop()
+                }
             }
             running = false; task = nil
         }
     }
-    func cancel(reason: String = "Stopped by user") { current?.stopReason = reason; task?.cancel() }
+    func cancel(reason: String = "Stopped by user") {
+        current?.stopReason = reason
+        task?.cancel()
+        if BackgroundKeepAlive.shared.isActive {
+            BackgroundKeepAlive.shared.stop()
+        }
+    }
     func delete(at offsets: IndexSet) { records.remove(atOffsets: offsets); save() }
     func clear() { canWrite = true; records.removeAll(); current = nil; save(); try? FileManager.default.removeItem(at: checkpoint) }
     func importRecord(_ data: Data) throws {
