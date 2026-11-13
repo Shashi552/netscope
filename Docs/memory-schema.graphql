@@ -1,0 +1,97 @@
+"""
+NetScope & Agent Memory GraphQL Schema
+Models the cross-session intelligence, decisions, code changes, and knowledge graph.
+"""
+
+"""
+Engineering workspace tracked in persistent agent memory.
+"""
+type Project {
+  id: ID!
+  name: String!
+  rootPath: String!
+  description: String
+  createdAt: String!
+  updatedAt: String!
+  sessions: [MemorySession!]!
+  observations(type: ObservationType, concept: String, limit: Int = 50): [Observation!]!
+  statistics: ProjectMemoryStats!
+}
+
+"""
+Development session grouping sequential agent prompts, executions, and milestones.
+"""
+type MemorySession {
+  id: ID!
+  project: Project!
+  startedAt: String!
+  finishedAt: String
+  summary: String!
+  status: SessionStatus!
+  observations: [Observation!]!
+}
+
+"""
+Atomic memory observation capturing decisions, bug fixes, features, or conventions.
+"""
+type Observation {
+  id: ID!
+  sessionId: ID!
+  project: Project!
+  type: ObservationType!
+  title: String!
+  subtitle: String
+  narrative: String!
+  facts: [String!]!
+  concepts: [String!]!
+  filesRead: [String!]!
+  filesModified: [String!]!
+  discoveryTokens: Int!
+  createdAt: String!
+  contentHash: String!
+  relevanceCount: Int!
+  agentType: String!
+}
+
+"""
+Categorization of recorded observations.
+"""
+enum ObservationType {
+  CONVENTION
+  ARCHITECTURE
+  BUGFIX
+  FEATURE
+  DECISION
+  DISCOVERY
+}
+
+"""
+Execution state of a memory session.
+"""
+enum SessionStatus {
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+"""
+Aggregate memory metrics and token economics.
+"""
+type ProjectMemoryStats {
+  totalObservations: Int!
+  totalSessions: Int!
+  cumulativeDiscoveryTokens: Int!
+  observationsByType: [TypeCount!]!
+}
+
+type TypeCount {
+  type: ObservationType!
+  count: Int!
+}
+
+type Query {
+  project(name: String!): Project
+  observation(id: ID!): Observation
+  observations(project: String!, type: ObservationType, concept: String, limit: Int = 50): [Observation!]!
+  sessions(project: String!): [MemorySession!]!
+}
